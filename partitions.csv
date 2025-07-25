@@ -1,0 +1,11 @@
+# Name,     Type, SubType, Offset,   Size,      Flags
+# Non-volatile storage
+nvs,        data, nvs,     0x9000,   0x5000,
+# OTA data    
+otadata,    data, ota,     0xe000,   0x2000, 
+# OTA Partition 1 (3.5MB)   
+app0,       app,  ota_0,   0x10000,  0x380000,
+# OTA Partition 2 (3.5MB)  
+app1,       app,  ota_1,   0x390000, 0x380000,
+# SPIFFS filesystem (1MB)  
+storage,    data, spiffs,  0x710000, 0x0F0000,  
