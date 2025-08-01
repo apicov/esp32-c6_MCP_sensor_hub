@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 add_compile_options(-Wno-format)
 
 # Add esp_mcp_bridge component path
-set(EXTRA_COMPONENT_DIRS ../firmware/components)
+set(EXTRA_COMPONENT_DIRS ./firmware/components)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.

@@ -49,33 +49,46 @@ source export.sh
 ```
 
 ### Project Structure
-This project is part of the `esp_mcp_bridge` repository and relies on:
+
+This project is **not** part of the `esp_mcp_bridge` repository, but it uses the firmware components from that repository.  
+You need to copy the `firmware/components` directory from `esp_mcp_bridge` into this project as shown below:
 
 ```
-esp_mcp_bridge/
-├── esp32-c6-mcp-sensor-hub/              # This project
-├── firmware/
-│   └── components/
-│       ├── esp_mcp_bridge/               # MCP Bridge library
-│       └── (sensor components)           # SCD30 and other sensor drivers
-└── chat_app/                            # Chat application (separate)
+esp32-c6-mcp-sensor-hub/              # This project
+└── components/                       # Copy from esp_mcp_bridge/firmware/components
+    ├── esp_mcp_bridge/               # MCP Bridge library
+    └── (sensor components)           # SCD30 and other sensor drivers
 ```
 
 ### Dependencies Setup
 
-1. **Clone the complete esp_mcp_bridge repository** (if not already done):
+1. **Copy firmware components from esp_mcp_bridge**:
+
+   If you only want the `firmware/components` folder, you can use a sparse checkout:
+
    ```bash
-   git clone https://github.com/your-repo/esp_mcp_bridge.git
-   cd esp_mcp_bridge/esp32-c6-mcp-sensor-hub
+   git clone --filter=blob:none --sparse https://github.com/your-repo/esp_mcp_bridge.git
+   cd esp_mcp_bridge
+   git sparse-checkout set firmware/components
+   cp -r firmware/components /path/to/your/esp32-c6-mcp-sensor-hub/
+   cd ..
+   rm -rf esp_mcp_bridge
    ```
 
-2. **Initialize ESP-IDF submodules**:
+   Or, if you already have the full repository:
+
+   ```bash
+   cp -r /path/to/esp_mcp_bridge/firmware/components /path/to/esp32-c6-mcp-sensor-hub/
+   ```
+
+2. **Initialize ESP-IDF submodules** (if needed):
+
    ```bash
    git submodule update --init --recursive
    ```
 
 3. **The project automatically includes**:
-   - `esp_mcp_bridge` library from `../firmware/components/esp_mcp_bridge/`
+   - `esp_mcp_bridge` library from `components/esp_mcp_bridge/`
    - SCD30 sensor driver from the components directory
    - BMP280/BME280 sensor driver from the components directory
    - Required ESP-IDF components (WiFi, MQTT, FreeRTOS, etc.)
