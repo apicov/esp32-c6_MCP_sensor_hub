@@ -1,0 +1,88 @@
+menu "MCP Bridge Configuration"
+
+    config MCP_BRIDGE_WIFI_SSID
+        string "WiFi SSID"
+        default "Your_WiFi_SSID"
+        help
+            Default WiFi SSID to connect to. Can be overridden at runtime.
+
+    config MCP_BRIDGE_WIFI_PASSWORD
+        string "WiFi Password"
+        default "Your_WiFi_Password"
+        help
+            Default WiFi password. Can be overridden at runtime.
+
+    config MCP_BRIDGE_MQTT_BROKER_URL
+        string "MQTT Broker URL"
+        default "mqtt://192.168.1.100:1883"
+        help
+            Default MQTT broker URL. Can be overridden at runtime.
+            Format: mqtt://broker:port or mqtts://broker:port for TLS
+
+    config MCP_BRIDGE_DEVICE_ID_PREFIX
+        string "Device ID Prefix"
+        default "esp32"
+        help
+            Prefix for auto-generated device IDs. Full ID will be prefix_MACADDR
+
+    config MCP_BRIDGE_SENSOR_PUBLISH_INTERVAL
+        int "Sensor Publish Interval (ms)"
+        range 1000 300000
+        default 10000
+        help
+            Default interval for publishing sensor data in milliseconds
+
+    config MCP_BRIDGE_COMMAND_TIMEOUT
+        int "Command Timeout (ms)"
+        range 1000 30000
+        default 5000
+        help
+            Timeout for actuator commands in milliseconds
+
+    config MCP_BRIDGE_ENABLE_WATCHDOG
+        bool "Enable Watchdog Timer"
+        default y
+        help
+            Enable system watchdog timer for automatic recovery
+
+    config MCP_BRIDGE_MAX_SENSORS
+        int "Maximum Number of Sensors"
+        range 1 64
+        default 16
+        help
+            Maximum number of sensors that can be registered
+
+    config MCP_BRIDGE_MAX_ACTUATORS
+        int "Maximum Number of Actuators"
+        range 1 64
+        default 16
+        help
+            Maximum number of actuators that can be registered
+
+    config MCP_BRIDGE_OPTIMIZE_MEMORY
+        bool "Optimize for Memory Usage"
+        default n
+        help
+            Enable memory optimizations (may reduce performance)
+
+    config MCP_BRIDGE_ENABLE_TLS
+        bool "Enable TLS/SSL Support"
+        default y
+        help
+            Enable TLS/SSL support for secure MQTT connections
+
+    config MCP_BRIDGE_LOG_LEVEL
+        int "Default Log Level"
+        range 0 5
+        default 3
+        help
+            Default logging level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Verbose)
+
+    config MCP_BRIDGE_TASK_STACK_SIZE
+        int "Task Stack Size"
+        range 2048 8192
+        default 4096
+        help
+            Stack size for MCP bridge tasks
+
+endmenu 

@@ -4,7 +4,8 @@
 .vscode/launch.json
 .vscode/ipch
 .DS_Store
-build
+# Ignore ESP-IDF build output
+build/
 #components
 managed_components
 private_data.h

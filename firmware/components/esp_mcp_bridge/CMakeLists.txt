@@ -1,0 +1,19 @@
+idf_component_register(
+    SRCS 
+        "src/esp_mcp_bridge.c"
+        "src/esp_mcp_device.c"
+    INCLUDE_DIRS 
+        "include"
+    REQUIRES 
+        "esp_wifi"
+        "esp_netif"
+        "esp_event"
+        "nvs_flash"
+        "mqtt"
+        "json"
+        "freertos"
+        "log"
+    PRIV_REQUIRES 
+        "lwip"
+        "mbedtls"
+) 

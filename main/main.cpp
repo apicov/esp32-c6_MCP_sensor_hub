@@ -66,6 +66,8 @@ static esp_err_t scd30_sensor_read_humidity(const char *sensor_id, float *value,
 static void mcp_event_handler(const mcp_event_t *event, void *user_data);
 static esp_err_t init_scd30_sensor(void);
 
+void update_sensors_task(void *p);
+
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "Starting ESP32-C6 MCP Sensor Hub Application");
@@ -190,9 +192,55 @@ extern "C" void app_main(void)
     
     // Start the MCP Bridge
     ESP_ERROR_CHECK(mcp_bridge_start());
-    
+
+    // Create task to periodically update sensor measurements
+    ESP_LOGI(TAG, "Creating sensor update task");  
+    // check if task creation is successful
+    if ( xTaskCreate(update_sensors_task, "update_sensors_task", 4096, NULL, 5, NULL)
+            != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create sensor update task");
+        return;
+    }
+
     ESP_LOGI(TAG, "MCP Sensor Hub started successfully with all sensors");
 }
+
+
+
+void update_sensors_task(void *p)
+{
+    ESP_LOGI(TAG, "Starting sensor update task");
+
+    const TickType_t interval = pdMS_TO_TICKS(30000);
+    TickType_t last_wake_time = xTaskGetTickCount();
+
+    while (true) {
+        ESP_LOGI(TAG, "Updating sensor measurements");
+        // Read and update BMP280/BME280 measurement
+        if (bmp_initialized) {
+            esp_err_t ret = bmp_read_cached_measurement();
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to read BMP280/BME280 measurement: %s", esp_err_to_name(ret));
+            }
+        }
+        
+        // Read and update SCD30 measurement
+        if (scd30_initialized) {
+            esp_err_t ret = scd30_read_cached_measurement();
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to read SCD30 measurement: %s", esp_err_to_name(ret));
+            }
+        }
+        
+        // Sleep for the configured sensor update interval
+        //vTaskDelay(pdMS_TO_TICKS(CONFIG_ESP32_C6_SENSOR_INTERVAL));
+
+        // Delay until the next cycle, keeping the interval constant
+        vTaskDelayUntil(&last_wake_time, interval);
+    }
+}
+
+
 
 // Initialize SCD30 sensor
 static esp_err_t init_scd30_sensor(void)
@@ -201,6 +249,8 @@ static esp_err_t init_scd30_sensor(void)
     
     // Initialize SCD30 device descriptor
     ESP_ERROR_CHECK(scd30_init_desc(&scd30_dev, I2C_NUM_0, GPIO_NUM_6, GPIO_NUM_7));
+    // wait for the sensor to be ready
+    vTaskDelay(pdMS_TO_TICKS(500));
     
     // Read firmware version
     uint16_t version, major_ver, minor_ver;
@@ -210,10 +260,13 @@ static esp_err_t init_scd30_sensor(void)
     minor_ver = version & 0xf;
     ESP_LOGI(TAG, "SCD30 Firmware Version: %d.%d", major_ver, minor_ver);
     
+    //set measurement interval to 2 seconds
+    ESP_ERROR_CHECK(scd30_set_measurement_interval(&scd30_dev, 30));
+
     // Start continuous measurement
     ESP_LOGI(TAG, "Starting SCD30 continuous measurement");
     ESP_ERROR_CHECK(scd30_trigger_continuous_measurement(&scd30_dev, 0));
-    
+
     // Initialize measurement cache
     scd30_cache.mutex = xSemaphoreCreateMutex();
     if (!scd30_cache.mutex) {
@@ -307,8 +360,8 @@ static esp_err_t bmp_read_cached_measurement(void)
     bmp_cache.valid = true;
     xSemaphoreGive(bmp_cache.mutex);
     
-    ESP_LOGD(TAG, "BMP280/BME280 measurement updated - Pressure: %.2f Pa, Temp: %.2f °C%s", 
-             pressure, temperature, is_bme280 ? ", Humidity: %.2f %%RH" : "");
+    ESP_LOGI(TAG, "BMP280/BME280 measurement updated - Pressure: %.2f Pa, Temp: %.2f °C%s", 
+             pressure, temperature, is_bme280 ? ", Humidity: %.2f %RH" : "");
     
     return ESP_OK;
 }
@@ -441,7 +494,7 @@ static esp_err_t scd30_read_cached_measurement(void)
     scd30_cache.valid = true;
     xSemaphoreGive(scd30_cache.mutex);
     
-    ESP_LOGD(TAG, "SCD30 measurement updated - CO2: %.0f ppm, Temp: %.2f °C, Humidity: %.2f %%RH", 
+    ESP_LOGI(TAG, "SCD30 measurement updated - CO2: %.0f ppm, Temp: %.2f °C, Humidity: %.2f %%RH", 
              co2, temperature, humidity);
     
     return ESP_OK;
