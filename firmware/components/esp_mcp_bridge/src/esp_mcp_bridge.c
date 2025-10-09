@@ -145,12 +145,10 @@ static void generate_device_id(char *device_id, size_t max_len) {
 }
 
 /**
- * @brief Get current timestamp
+ * @brief Get current timestamp (milliseconds since boot)
  */
 static uint32_t get_timestamp(void) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (uint32_t)tv.tv_sec;
+    return esp_log_timestamp();
 }
 
 /**
