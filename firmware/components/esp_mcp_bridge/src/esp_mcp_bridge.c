@@ -331,15 +331,21 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        if (g_bridge_ctx->wifi_retry_count < 10) {
-            esp_wifi_connect();
-            g_bridge_ctx->wifi_retry_count++;
-            ESP_LOGI(TAG, "Retrying WiFi connection (%d/10)", g_bridge_ctx->wifi_retry_count);
-        } else {
-            xEventGroupSetBits(g_bridge_ctx->wifi_event_group, WIFI_FAIL_BIT);
-            ESP_LOGE(TAG, "WiFi connection failed after 10 retries");
-        }
+        // Infinite retry with exponential backoff (max 60 seconds between retries)
+        g_bridge_ctx->wifi_retry_count++;
         g_bridge_ctx->wifi_connected = false;
+
+        // Calculate backoff delay: min(2^retry_count * 1000ms, 60000ms)
+        uint32_t delay_ms = (1 << (g_bridge_ctx->wifi_retry_count - 1)) * 1000;
+        if (delay_ms > 60000) delay_ms = 60000;
+
+        ESP_LOGW(TAG, "WiFi disconnected. Retry #%d in %d seconds",
+                 g_bridge_ctx->wifi_retry_count, delay_ms / 1000);
+
+        // Delay then reconnect (non-blocking)
+        vTaskDelay(pdMS_TO_TICKS(delay_ms));
+        esp_wifi_connect();
+
         send_event(MCP_EVENT_WIFI_DISCONNECTED, NULL);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
@@ -448,6 +454,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGW(TAG, "MQTT disconnected");
             g_bridge_ctx->mqtt_connected = false;
+            g_bridge_ctx->mqtt_reconnections++;
+
+            // MQTT client has auto-reconnect, but we track disconnection events
+            // The library will automatically attempt to reconnect
+            ESP_LOGI(TAG, "MQTT will auto-reconnect (total reconnections: %d)",
+                     g_bridge_ctx->mqtt_reconnections);
+
             xEventGroupSetBits(g_bridge_ctx->mqtt_event_group, MQTT_FAIL_BIT);
             send_event(MCP_EVENT_MQTT_DISCONNECTED, NULL);
             break;
@@ -534,7 +547,10 @@ static esp_err_t mqtt_init_internal(const mcp_bridge_config_t *config) {
             .msg = "{\"value\":\"offline\"}",
             .qos = 1,
             .retain = true
-        }
+        },
+        .network.disable_auto_reconnect = false,  // Enable auto-reconnect (default, but explicit)
+        .network.reconnect_timeout_ms = 10000,    // Retry every 10 seconds
+        .network.timeout_ms = 10000               // Connection timeout
     };
     
     // Set last will topic
