@@ -55,6 +55,10 @@ typedef struct sensor_node {
     char *unit;
     mcp_sensor_metadata_t metadata;
     mcp_sensor_read_cb_t read_cb;
+    mcp_sensor_read_multi_cb_t read_multi_cb;  // For multi-value sensors
+    bool is_multi_value;                        // Flag to indicate multi-value sensor
+    mcp_sensor_field_metadata_t *field_metadata; // Field metadata for multi-value sensors
+    size_t field_count;                         // Number of fields
     void *user_data;
     uint32_t last_read_time;
     float last_value;
@@ -128,7 +132,9 @@ typedef struct {
     uint32_t connection_failures;
     uint32_t sensor_read_errors;
     uint32_t boot_time;
-    
+    uint32_t wifi_reconnections;
+    uint32_t mqtt_reconnections;
+
 } mcp_bridge_context_t;
 
 static mcp_bridge_context_t *g_bridge_ctx = NULL;
@@ -145,10 +151,12 @@ static void generate_device_id(char *device_id, size_t max_len) {
 }
 
 /**
- * @brief Get current timestamp (milliseconds since boot)
+ * @brief Get current timestamp (Unix timestamp in seconds)
  */
 static uint32_t get_timestamp(void) {
-    return esp_log_timestamp();
+    time_t now;
+    time(&now);
+    return (uint32_t)now;
 }
 
 /**
@@ -220,34 +228,76 @@ static actuator_node_t* find_actuator(const char *actuator_id) {
 /**
  * @brief Create sensor data JSON message
  */
-static char* create_sensor_message(const char *sensor_id, const char *sensor_type, 
+static char* create_sensor_message(const char *sensor_id, const char *sensor_type,
                                   float value, const char *unit) {
     cJSON *json = cJSON_CreateObject();
     cJSON *value_obj = cJSON_CreateObject();
-    
+
     cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
+    cJSON_AddStringToObject(json, "sensor_id", sensor_id);
     cJSON_AddNumberToObject(json, "timestamp", get_timestamp());
     cJSON_AddStringToObject(json, "type", "sensor");
     cJSON_AddStringToObject(json, "component", sensor_type);
     cJSON_AddStringToObject(json, "action", "read");
-    
+
     cJSON_AddNumberToObject(value_obj, "reading", value);
     if (unit) {
         cJSON_AddStringToObject(value_obj, "unit", unit);
     }
     cJSON_AddNumberToObject(value_obj, "quality", 100); // Default quality
-    
+
     cJSON_AddItemToObject(json, "value", value_obj);
-    
+
     // Add system metrics
     cJSON *metrics = cJSON_CreateObject();
     cJSON_AddNumberToObject(metrics, "free_heap", esp_get_free_heap_size());
     cJSON_AddNumberToObject(metrics, "uptime", get_timestamp() - g_bridge_ctx->boot_time);
     cJSON_AddItemToObject(json, "metrics", metrics);
-    
+
     char *json_string = cJSON_Print(json);
     cJSON_Delete(json);
-    
+
+    return json_string;
+}
+
+/**
+ * @brief Create multi-value sensor data JSON message
+ */
+static char* create_multi_sensor_message(const char *sensor_id, const mcp_sensor_multi_value_t *values) {
+    cJSON *json = cJSON_CreateObject();
+    cJSON *value_obj = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
+    cJSON_AddStringToObject(json, "sensor_id", sensor_id);
+    cJSON_AddNumberToObject(json, "timestamp", get_timestamp());
+    cJSON_AddStringToObject(json, "type", "sensor");
+    cJSON_AddStringToObject(json, "action", "read");
+
+    // Add each field as a nested object in value
+    for (size_t i = 0; i < values->field_count; i++) {
+        const mcp_sensor_field_t *field = &values->fields[i];
+        cJSON *field_obj = cJSON_CreateObject();
+
+        cJSON_AddNumberToObject(field_obj, "reading", field->value);
+        if (field->unit) {
+            cJSON_AddStringToObject(field_obj, "unit", field->unit);
+        }
+        cJSON_AddNumberToObject(field_obj, "quality", field->quality > 0 ? field->quality : 100);
+
+        cJSON_AddItemToObject(value_obj, field->name, field_obj);
+    }
+
+    cJSON_AddItemToObject(json, "value", value_obj);
+
+    // Add system metrics
+    cJSON *metrics = cJSON_CreateObject();
+    cJSON_AddNumberToObject(metrics, "free_heap", esp_get_free_heap_size());
+    cJSON_AddNumberToObject(metrics, "uptime", get_timestamp() - g_bridge_ctx->boot_time);
+    cJSON_AddItemToObject(json, "metrics", metrics);
+
+    char *json_string = cJSON_Print(json);
+    cJSON_Delete(json);
+
     return json_string;
 }
 
@@ -259,36 +309,66 @@ static char* create_capabilities_message(void) {
     cJSON *sensors_array = cJSON_CreateArray();
     cJSON *actuators_array = cJSON_CreateArray();
     cJSON *metadata_obj = cJSON_CreateObject();
-    
+
     cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
     cJSON_AddStringToObject(json, "firmware_version", "1.0.0"); // Could be made configurable
-    
+
     // Add sensors
     sensor_node_t *sensor = g_bridge_ctx->sensors;
     while (sensor) {
-        cJSON_AddItemToArray(sensors_array, cJSON_CreateString(sensor->type));
-        
+        // Add sensor ID to array
+        cJSON_AddItemToArray(sensors_array, cJSON_CreateString(sensor->sensor_id));
+
         // Add sensor metadata
         cJSON *sensor_meta = cJSON_CreateObject();
-        if (sensor->unit) {
-            cJSON_AddStringToObject(sensor_meta, "unit", sensor->unit);
+
+        if (sensor->is_multi_value) {
+            cJSON_AddStringToObject(sensor_meta, "type", "multi_value");
+            if (sensor->metadata.description) {
+                cJSON_AddStringToObject(sensor_meta, "description", sensor->metadata.description);
+            }
+
+            // Add field metadata
+            if (sensor->field_metadata && sensor->field_count > 0) {
+                cJSON *fields_obj = cJSON_CreateObject();
+                for (size_t i = 0; i < sensor->field_count; i++) {
+                    cJSON *field_meta = cJSON_CreateObject();
+                    const mcp_sensor_field_metadata_t *field = &sensor->field_metadata[i];
+
+                    if (field->unit) {
+                        cJSON_AddStringToObject(field_meta, "unit", field->unit);
+                    }
+                    cJSON_AddNumberToObject(field_meta, "min_range", field->min_range);
+                    cJSON_AddNumberToObject(field_meta, "max_range", field->max_range);
+                    cJSON_AddNumberToObject(field_meta, "accuracy", field->accuracy);
+
+                    cJSON_AddItemToObject(fields_obj, field->name, field_meta);
+                }
+                cJSON_AddItemToObject(sensor_meta, "fields", fields_obj);
+            }
+        } else {
+            cJSON_AddStringToObject(sensor_meta, "type", "single_value");
+            cJSON_AddStringToObject(sensor_meta, "component", sensor->type);
+            if (sensor->unit) {
+                cJSON_AddStringToObject(sensor_meta, "unit", sensor->unit);
+            }
+            cJSON_AddNumberToObject(sensor_meta, "min_range", sensor->metadata.min_range);
+            cJSON_AddNumberToObject(sensor_meta, "max_range", sensor->metadata.max_range);
+            cJSON_AddNumberToObject(sensor_meta, "accuracy", sensor->metadata.accuracy);
+            if (sensor->metadata.description) {
+                cJSON_AddStringToObject(sensor_meta, "description", sensor->metadata.description);
+            }
         }
-        cJSON_AddNumberToObject(sensor_meta, "min_range", sensor->metadata.min_range);
-        cJSON_AddNumberToObject(sensor_meta, "max_range", sensor->metadata.max_range);
-        cJSON_AddNumberToObject(sensor_meta, "accuracy", sensor->metadata.accuracy);
-        if (sensor->metadata.description) {
-            cJSON_AddStringToObject(sensor_meta, "description", sensor->metadata.description);
-        }
-        
-        cJSON_AddItemToObject(metadata_obj, sensor->type, sensor_meta);
+
+        cJSON_AddItemToObject(metadata_obj, sensor->sensor_id, sensor_meta);
         sensor = sensor->next;
     }
-    
+
     // Add actuators
     actuator_node_t *actuator = g_bridge_ctx->actuators;
     while (actuator) {
         cJSON_AddItemToArray(actuators_array, cJSON_CreateString(actuator->type));
-        
+
         // Add actuator metadata
         cJSON *actuator_meta = cJSON_CreateObject();
         if (actuator->metadata.value_type) {
@@ -297,7 +377,7 @@ static char* create_capabilities_message(void) {
         if (actuator->metadata.description) {
             cJSON_AddStringToObject(actuator_meta, "description", actuator->metadata.description);
         }
-        
+
         // Add supported actions
         if (actuator->metadata.supported_actions) {
             cJSON *actions_array = cJSON_CreateArray();
@@ -306,18 +386,18 @@ static char* create_capabilities_message(void) {
             }
             cJSON_AddItemToObject(actuator_meta, "supported_actions", actions_array);
         }
-        
+
         cJSON_AddItemToObject(metadata_obj, actuator->type, actuator_meta);
         actuator = actuator->next;
     }
-    
+
     cJSON_AddItemToObject(json, "sensors", sensors_array);
     cJSON_AddItemToObject(json, "actuators", actuators_array);
     cJSON_AddItemToObject(json, "metadata", metadata_obj);
-    
+
     char *json_string = cJSON_Print(json);
     cJSON_Delete(json);
-    
+
     return json_string;
 }
 
@@ -592,42 +672,65 @@ static void sensor_task(void *pvParameters) {
         
         // Poll all registered sensors
         xSemaphoreTake(g_bridge_ctx->mutex, portMAX_DELAY);
-        
+
         sensor_node_t *sensor = g_bridge_ctx->sensors;
         while (sensor) {
-            float value;
-            esp_err_t ret = sensor->read_cb(sensor->sensor_id, &value, sensor->user_data);
-            
-            if (ret == ESP_OK) {
-                sensor->last_value = value;
-                sensor->last_read_time = get_timestamp();
-                
-                // Create and publish sensor data
-                char *message = create_sensor_message(sensor->sensor_id, sensor->type, value, sensor->unit);
-                if (message) {
-                    char topic[MCP_BRIDGE_MAX_TOPIC_LEN];
-                    snprintf(topic, sizeof(topic), "devices/%s/sensors/%s/data", 
-                            g_bridge_ctx->device_id, sensor->type);
-                    
-                    int msg_id = esp_mqtt_client_publish(g_bridge_ctx->mqtt_client, topic, message, 0, 0, false);
-                    if (msg_id >= 0) {
-                        g_bridge_ctx->messages_sent++;
-                        ESP_LOGD(TAG, "Published sensor %s: %.2f %s", sensor->sensor_id, value, sensor->unit ? sensor->unit : "");
-                    } else {
-                        ESP_LOGE(TAG, "Failed to publish sensor data for %s", sensor->sensor_id);
+            esp_err_t ret;
+            char *message = NULL;
+            char topic[MCP_BRIDGE_MAX_TOPIC_LEN];
+
+            if (sensor->is_multi_value) {
+                // Multi-value sensor
+                mcp_sensor_multi_value_t values = {0};
+                ret = sensor->read_multi_cb(sensor->sensor_id, &values, sensor->user_data);
+
+                if (ret == ESP_OK && values.field_count > 0) {
+                    sensor->last_read_time = get_timestamp();
+
+                    // Create and publish multi-value sensor data
+                    message = create_multi_sensor_message(sensor->sensor_id, &values);
+                    if (message) {
+                        snprintf(topic, sizeof(topic), "devices/%s/sensors/%s/data",
+                                g_bridge_ctx->device_id, sensor->sensor_id);
                     }
-                    
-                    free(message);
                 }
             } else {
-                ESP_LOGE(TAG, "Failed to read sensor %s: %s", 
+                // Single-value sensor
+                float value;
+                ret = sensor->read_cb(sensor->sensor_id, &value, sensor->user_data);
+
+                if (ret == ESP_OK) {
+                    sensor->last_value = value;
+                    sensor->last_read_time = get_timestamp();
+
+                    // Create and publish sensor data
+                    message = create_sensor_message(sensor->sensor_id, sensor->type, value, sensor->unit);
+                    if (message) {
+                        snprintf(topic, sizeof(topic), "devices/%s/sensors/%s/data",
+                                g_bridge_ctx->device_id, sensor->type);
+                    }
+                }
+            }
+
+            if (ret == ESP_OK && message) {
+                int msg_id = esp_mqtt_client_publish(g_bridge_ctx->mqtt_client, topic, message, 0, 0, false);
+                if (msg_id >= 0) {
+                    g_bridge_ctx->messages_sent++;
+                    ESP_LOGD(TAG, "Published sensor %s data", sensor->sensor_id);
+                } else {
+                    ESP_LOGE(TAG, "Failed to publish sensor data for %s", sensor->sensor_id);
+                }
+
+                free(message);
+            } else if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to read sensor %s: %s",
                         sensor->sensor_id, esp_err_to_name(ret));
                 g_bridge_ctx->sensor_read_errors++;
             }
-            
+
             sensor = sensor->next;
         }
-        
+
         xSemaphoreGive(g_bridge_ctx->mutex);
     }
     
@@ -889,6 +992,9 @@ esp_err_t mcp_bridge_deinit(void) {
         free(sensor->sensor_id);
         free(sensor->type);
         free(sensor->unit);
+        if (sensor->field_metadata) {
+            free(sensor->field_metadata);
+        }
         free(sensor);
         sensor = next;
     }
@@ -975,7 +1081,67 @@ esp_err_t mcp_bridge_register_sensor(const char *sensor_id,
     xSemaphoreGive(g_bridge_ctx->mutex);
     
     ESP_LOGI(TAG, "Registered sensor: %s (type: %s)", sensor_id, type);
-    
+
+    return ESP_OK;
+}
+
+esp_err_t mcp_bridge_register_multi_sensor(const char *sensor_id,
+                                           const mcp_sensor_field_metadata_t *field_metadata,
+                                           size_t field_count,
+                                           const mcp_sensor_metadata_t *metadata,
+                                           mcp_sensor_read_multi_cb_t read_cb,
+                                           void *user_data) {
+    if (!g_bridge_ctx || !sensor_id || !read_cb) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (g_bridge_ctx->sensor_count >= MCP_BRIDGE_MAX_SENSORS) {
+        ESP_LOGE(TAG, "Maximum number of sensors reached");
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Check for duplicate
+    if (find_sensor(sensor_id)) {
+        ESP_LOGE(TAG, "Sensor %s already registered", sensor_id);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // Allocate new sensor node
+    sensor_node_t *node = calloc(1, sizeof(sensor_node_t));
+    if (!node) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Copy sensor information
+    node->sensor_id = strdup(sensor_id);
+    node->is_multi_value = true;
+    if (metadata) {
+        memcpy(&node->metadata, metadata, sizeof(mcp_sensor_metadata_t));
+    }
+    node->read_multi_cb = read_cb;
+    node->user_data = user_data;
+
+    // Copy field metadata if provided
+    if (field_metadata && field_count > 0) {
+        node->field_metadata = calloc(field_count, sizeof(mcp_sensor_field_metadata_t));
+        if (!node->field_metadata) {
+            free(node->sensor_id);
+            free(node);
+            return ESP_ERR_NO_MEM;
+        }
+        memcpy(node->field_metadata, field_metadata, field_count * sizeof(mcp_sensor_field_metadata_t));
+        node->field_count = field_count;
+    }
+
+    // Add to list
+    xSemaphoreTake(g_bridge_ctx->mutex, portMAX_DELAY);
+    node->next = g_bridge_ctx->sensors;
+    g_bridge_ctx->sensors = node;
+    g_bridge_ctx->sensor_count++;
+    xSemaphoreGive(g_bridge_ctx->mutex);
+
+    ESP_LOGI(TAG, "Registered multi-value sensor: %s with %d fields", sensor_id, field_count);
+
     return ESP_OK;
 }
 

@@ -28,6 +28,35 @@ typedef struct {
 } mcp_sensor_reading_t;
 
 /**
+ * @brief Single field in a multi-value sensor reading
+ */
+typedef struct {
+    const char *name;                   /**< Field name (e.g., "temperature", "humidity") */
+    float value;                        /**< Field value */
+    const char *unit;                   /**< Unit of measurement */
+    float quality;                      /**< Data quality (0-100), default 100 */
+} mcp_sensor_field_t;
+
+/**
+ * @brief Multi-value sensor reading structure
+ */
+typedef struct {
+    mcp_sensor_field_t *fields;         /**< Array of sensor fields */
+    size_t field_count;                 /**< Number of fields in array */
+} mcp_sensor_multi_value_t;
+
+/**
+ * @brief Field metadata for multi-value sensors
+ */
+typedef struct {
+    const char *name;                   /**< Field name */
+    const char *unit;                   /**< Unit of measurement */
+    float min_range;                    /**< Minimum value */
+    float max_range;                    /**< Maximum value */
+    float accuracy;                     /**< Accuracy/precision */
+} mcp_sensor_field_metadata_t;
+
+/**
  * @brief Sensor metadata structure
  */
 typedef struct {

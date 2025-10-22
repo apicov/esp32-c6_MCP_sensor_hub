@@ -159,6 +159,15 @@ typedef void (*mcp_event_handler_t)(const mcp_event_t *event, void *user_data);
 typedef esp_err_t (*mcp_sensor_read_cb_t)(const char *sensor_id, float *value, void *user_data);
 
 /**
+ * @brief Multi-value sensor read callback type
+ * @param sensor_id Sensor identifier
+ * @param values Output parameter for multi-value sensor readings
+ * @param user_data User data passed during registration
+ * @return ESP_OK on success, error code on failure
+ */
+typedef esp_err_t (*mcp_sensor_read_multi_cb_t)(const char *sensor_id, mcp_sensor_multi_value_t *values, void *user_data);
+
+/**
  * @brief Actuator control callback type
  * @param actuator_id Actuator identifier
  * @param action Action to perform (read/write/toggle)
@@ -236,6 +245,27 @@ esp_err_t mcp_bridge_register_sensor(const char *sensor_id,
                                     const mcp_sensor_metadata_t *metadata,
                                     mcp_sensor_read_cb_t read_cb,
                                     void *user_data);
+
+/**
+ * @brief Register a multi-value sensor
+ *
+ * Use this for sensors that provide multiple readings (e.g., a sensor chip
+ * that measures temperature, humidity, and pressure).
+ *
+ * @param sensor_id Unique sensor identifier
+ * @param field_metadata Array of field metadata (NULL-terminated or use field_count)
+ * @param field_count Number of fields (if 0, field_metadata must be NULL-terminated)
+ * @param metadata General sensor metadata (can be NULL)
+ * @param read_cb Callback function to read all sensor values
+ * @param user_data User data to pass to callback
+ * @return ESP_OK on success, error code on failure
+ */
+esp_err_t mcp_bridge_register_multi_sensor(const char *sensor_id,
+                                           const mcp_sensor_field_metadata_t *field_metadata,
+                                           size_t field_count,
+                                           const mcp_sensor_metadata_t *metadata,
+                                           mcp_sensor_read_multi_cb_t read_cb,
+                                           void *user_data);
 
 /**
  * @brief Register an actuator
