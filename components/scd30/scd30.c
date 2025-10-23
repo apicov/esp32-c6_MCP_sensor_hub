@@ -191,7 +191,18 @@ esp_err_t scd30_trigger_continuous_measurement(i2c_dev_t *dev, uint16_t p_comp)
 {
     CHECK_ARG(p_comp == 0 || (p_comp >= 700 && p_comp <= 1400));
 
-    return execute_cmd(dev, CMD_TRIGGER_CONTINUOUS_MEASUREMENT, 0, &p_comp, 1, NULL, 0);
+    ESP_LOGI(TAG, "Triggering continuous measurement with pressure compensation: %d mbar", p_comp);
+
+    // Datasheet: Wait at least 10ms after sending this command
+    esp_err_t ret = execute_cmd(dev, CMD_TRIGGER_CONTINUOUS_MEASUREMENT, 10, &p_comp, 1, NULL, 0);
+
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Continuous measurement started successfully");
+    } else {
+        ESP_LOGE(TAG, "Failed to start continuous measurement: %s", esp_err_to_name(ret));
+    }
+
+    return ret;
 }
 
 esp_err_t scd30_stop_continuous_measurement(i2c_dev_t *dev)
@@ -207,8 +218,9 @@ esp_err_t scd30_get_measurement_interval(i2c_dev_t *dev, uint16_t *interval_seco
 
 esp_err_t scd30_set_measurement_interval(i2c_dev_t *dev, uint16_t interval_seconds)
 {
-    CHECK_ARG(interval_seconds > 2 && interval_seconds < 1800);
-    return execute_cmd(dev, CMD_SET_MEASUREMENT_INTERVAL, 1, &interval_seconds, 1, NULL, 0);
+    CHECK_ARG(interval_seconds >= 2 && interval_seconds <= 1800);
+    // Datasheet: This setting is stored in non-volatile memory, allow time to write
+    return execute_cmd(dev, CMD_SET_MEASUREMENT_INTERVAL, 5, &interval_seconds, 1, NULL, 0);
 }
 
 esp_err_t scd30_get_data_ready_status(i2c_dev_t *dev, bool *data_ready)
@@ -216,8 +228,14 @@ esp_err_t scd30_get_data_ready_status(i2c_dev_t *dev, bool *data_ready)
     CHECK_ARG(data_ready);
 
     uint16_t status;
-    CHECK(execute_cmd(dev, CMD_GET_DATA_READY_STATUS, 1, NULL, 0, &status, 1));
-    *data_ready = status != 0;
+    esp_err_t ret = execute_cmd(dev, CMD_GET_DATA_READY_STATUS, 3, NULL, 0, &status, 1);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get data ready status: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    *data_ready = status == 1;
+    ESP_LOGV(TAG, "Data ready status register value: 0x%04x -> %s", status, *data_ready ? "READY" : "NOT READY");
 
     return ESP_OK;
 }

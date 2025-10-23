@@ -51,6 +51,7 @@ typedef struct {
 typedef struct {
     const char *name;                   /**< Field name */
     const char *unit;                   /**< Unit of measurement */
+    const char *metric_type;            /**< Metric type (e.g., "temperature", "pressure", "humidity") */
     float min_range;                    /**< Minimum value */
     float max_range;                    /**< Maximum value */
     float accuracy;                     /**< Accuracy/precision */
@@ -65,6 +66,7 @@ typedef struct {
     float accuracy;                     /**< Accuracy/precision */
     uint32_t update_interval_ms;        /**< Update interval in milliseconds */
     const char *description;            /**< Human-readable description */
+    const char *location;               /**< Sensor location (e.g., "home", "living_room") */
     bool calibration_required;          /**< Whether calibration is required */
     uint32_t calibration_interval_s;    /**< Calibration interval in seconds */
 } mcp_sensor_metadata_t;

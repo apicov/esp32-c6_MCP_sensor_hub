@@ -95,7 +95,8 @@ typedef struct {
     // Configuration
     mcp_bridge_config_t config;
     char device_id[MCP_BRIDGE_DEVICE_ID_LEN];
-    
+    const char *device_location;
+
     // State
     bool initialized;
     bool running;
@@ -313,6 +314,11 @@ static char* create_capabilities_message(void) {
     cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
     cJSON_AddStringToObject(json, "firmware_version", "1.0.0"); // Could be made configurable
 
+    // Add device location if configured
+    if (g_bridge_ctx->device_location) {
+        cJSON_AddStringToObject(json, "device_location", g_bridge_ctx->device_location);
+    }
+
     // Add sensors
     sensor_node_t *sensor = g_bridge_ctx->sensors;
     while (sensor) {
@@ -327,6 +333,9 @@ static char* create_capabilities_message(void) {
             if (sensor->metadata.description) {
                 cJSON_AddStringToObject(sensor_meta, "description", sensor->metadata.description);
             }
+            if (sensor->metadata.location) {
+                cJSON_AddStringToObject(sensor_meta, "location", sensor->metadata.location);
+            }
 
             // Add field metadata
             if (sensor->field_metadata && sensor->field_count > 0) {
@@ -337,6 +346,9 @@ static char* create_capabilities_message(void) {
 
                     if (field->unit) {
                         cJSON_AddStringToObject(field_meta, "unit", field->unit);
+                    }
+                    if (field->metric_type) {
+                        cJSON_AddStringToObject(field_meta, "metric_type", field->metric_type);
                     }
                     cJSON_AddNumberToObject(field_meta, "min_range", field->min_range);
                     cJSON_AddNumberToObject(field_meta, "max_range", field->max_range);
@@ -357,6 +369,9 @@ static char* create_capabilities_message(void) {
             cJSON_AddNumberToObject(sensor_meta, "accuracy", sensor->metadata.accuracy);
             if (sensor->metadata.description) {
                 cJSON_AddStringToObject(sensor_meta, "description", sensor->metadata.description);
+            }
+            if (sensor->metadata.location) {
+                cJSON_AddStringToObject(sensor_meta, "location", sensor->metadata.location);
             }
         }
 
@@ -836,6 +851,11 @@ esp_err_t mcp_bridge_init(const mcp_bridge_config_t *config) {
         strncpy(g_bridge_ctx->device_id, config->device_id, sizeof(g_bridge_ctx->device_id) - 1);
     } else {
         generate_device_id(g_bridge_ctx->device_id, sizeof(g_bridge_ctx->device_id));
+    }
+
+    // Store device location
+    if (config && config->device_location) {
+        g_bridge_ctx->device_location = config->device_location;
     }
     
     // Create synchronization primitives
