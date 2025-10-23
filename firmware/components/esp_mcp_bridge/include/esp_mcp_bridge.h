@@ -68,6 +68,7 @@ typedef struct {
     const char *mqtt_username;                  /**< MQTT username (NULL for no auth) */
     const char *mqtt_password;                  /**< MQTT password (NULL for no auth) */
     const char *device_id;                      /**< Device ID (NULL to auto-generate) */
+    const char *device_name;                    /**< Device name (NULL for no name) */
     const char *device_location;                /**< Device location (e.g., "home", "office") */
     uint32_t sensor_publish_interval_ms;        /**< Sensor publish interval (0 for default) */
     uint32_t command_timeout_ms;                /**< Command timeout in milliseconds */

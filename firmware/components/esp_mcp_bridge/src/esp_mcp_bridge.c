@@ -95,6 +95,7 @@ typedef struct {
     // Configuration
     mcp_bridge_config_t config;
     char device_id[MCP_BRIDGE_DEVICE_ID_LEN];
+    const char *device_name;
     const char *device_location;
 
     // State
@@ -235,6 +236,9 @@ static char* create_sensor_message(const char *sensor_id, const char *sensor_typ
     cJSON *value_obj = cJSON_CreateObject();
 
     cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
+    if (g_bridge_ctx->device_name) {
+        cJSON_AddStringToObject(json, "device_name", g_bridge_ctx->device_name);
+    }
     cJSON_AddStringToObject(json, "sensor_id", sensor_id);
     cJSON_AddNumberToObject(json, "timestamp", get_timestamp());
     cJSON_AddStringToObject(json, "type", "sensor");
@@ -269,6 +273,9 @@ static char* create_multi_sensor_message(const char *sensor_id, const mcp_sensor
     cJSON *value_obj = cJSON_CreateObject();
 
     cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
+    if (g_bridge_ctx->device_name) {
+        cJSON_AddStringToObject(json, "device_name", g_bridge_ctx->device_name);
+    }
     cJSON_AddStringToObject(json, "sensor_id", sensor_id);
     cJSON_AddNumberToObject(json, "timestamp", get_timestamp());
     cJSON_AddStringToObject(json, "type", "sensor");
@@ -313,6 +320,11 @@ static char* create_capabilities_message(void) {
 
     cJSON_AddStringToObject(json, "device_id", g_bridge_ctx->device_id);
     cJSON_AddStringToObject(json, "firmware_version", "1.0.0"); // Could be made configurable
+
+    // Add device name if configured
+    if (g_bridge_ctx->device_name) {
+        cJSON_AddStringToObject(json, "device_name", g_bridge_ctx->device_name);
+    }
 
     // Add device location if configured
     if (g_bridge_ctx->device_location) {
@@ -851,6 +863,11 @@ esp_err_t mcp_bridge_init(const mcp_bridge_config_t *config) {
         strncpy(g_bridge_ctx->device_id, config->device_id, sizeof(g_bridge_ctx->device_id) - 1);
     } else {
         generate_device_id(g_bridge_ctx->device_id, sizeof(g_bridge_ctx->device_id));
+    }
+
+    // Store device name
+    if (config && config->device_name) {
+        g_bridge_ctx->device_name = config->device_name;
     }
 
     // Store device location

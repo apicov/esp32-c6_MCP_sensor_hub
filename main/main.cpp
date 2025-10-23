@@ -99,6 +99,7 @@ extern "C" void app_main(void)
         .mqtt_username = NULL,
         .mqtt_password = NULL,
         .device_id = CONFIG_ESP32_C6_DEVICE_ID,
+        .device_name = "esp32_home",
         .device_location = "home",
         .sensor_publish_interval_ms = CONFIG_ESP32_C6_SENSOR_INTERVAL,
         .command_timeout_ms = 5000,
