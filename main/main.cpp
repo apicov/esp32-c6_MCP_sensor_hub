@@ -232,13 +232,22 @@ extern "C" void app_main(void)
 
     // Register HM3301 as multi-value sensor (only if initialized)
     if (hm3301_initialized) {
+        // NOTE: Only registering PM concentration fields for HM-3301 (weighing mode only)
+        // If using HM-3302 or HM-3602, uncomment particle count fields below
         mcp_sensor_field_metadata_t hm3301_fields[] = {
-            {.name = "pm1_0_std", .unit = "ug/m3", .metric_type = "pm1.0", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
-            {.name = "pm2_5_std", .unit = "ug/m3", .metric_type = "pm2.5", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
+            {.name = "pm1.0_std", .unit = "ug/m3", .metric_type = "pm1.0", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
+            {.name = "pm2.5_std", .unit = "ug/m3", .metric_type = "pm2.5", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
             {.name = "pm10_std", .unit = "ug/m3", .metric_type = "pm10", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
-            {.name = "pm1_0_atm", .unit = "ug/m3", .metric_type = "pm1.0_atm", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
-            {.name = "pm2_5_atm", .unit = "ug/m3", .metric_type = "pm2.5_atm", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
+            {.name = "pm1.0_atm", .unit = "ug/m3", .metric_type = "pm1.0_atm", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
+            {.name = "pm2.5_atm", .unit = "ug/m3", .metric_type = "pm2.5_atm", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f},
             {.name = "pm10_atm", .unit = "ug/m3", .metric_type = "pm10_atm", .min_range = 0.0f, .max_range = 1000.0f, .accuracy = 10.0f}
+            // Uncomment for HM-3302/HM-3602 (counting + weighing mode):
+            // {.name = "particles_0.3um", .unit = "count/0.1L", .metric_type = "particle_count", .min_range = 0.0f, .max_range = 65535.0f, .accuracy = 1.0f},
+            // {.name = "particles_0.5um", .unit = "count/0.1L", .metric_type = "particle_count", .min_range = 0.0f, .max_range = 65535.0f, .accuracy = 1.0f},
+            // {.name = "particles_1.0um", .unit = "count/0.1L", .metric_type = "particle_count", .min_range = 0.0f, .max_range = 65535.0f, .accuracy = 1.0f},
+            // {.name = "particles_2.5um", .unit = "count/0.1L", .metric_type = "particle_count", .min_range = 0.0f, .max_range = 65535.0f, .accuracy = 1.0f},
+            // {.name = "particles_5.0um", .unit = "count/0.1L", .metric_type = "particle_count", .min_range = 0.0f, .max_range = 65535.0f, .accuracy = 1.0f},
+            // {.name = "particles_10um", .unit = "count/0.1L", .metric_type = "particle_count", .min_range = 0.0f, .max_range = 65535.0f, .accuracy = 1.0f}
         };
         mcp_sensor_metadata_t hm3301_metadata = {
             .min_range = 0.0f,
@@ -671,6 +680,10 @@ static esp_err_t hm3301_read_cached_measurement(void)
              data.pm1_0_std, data.pm1_0_atm,
              data.pm2_5_std, data.pm2_5_atm,
              data.pm10_std, data.pm10_atm);
+    // Uncomment for HM-3302/HM-3602 to log particle counts:
+    // ESP_LOGI(TAG, "HM3301 particle counts - 0.3um: %d, 0.5um: %d, 1.0um: %d, 2.5um: %d, 5.0um: %d, 10um: %d",
+    //          data.particles_03um, data.particles_05um, data.particles_10um,
+    //          data.particles_25um, data.particles_50um, data.particles_100um);
 
     return ESP_OK;
 }
@@ -687,17 +700,18 @@ static esp_err_t hm3301_sensor_read_multi(const char *sensor_id, mcp_sensor_mult
         return ret;
     }
 
-    // Allocate fields array (6 values: PM1.0, PM2.5, PM10 in both std and atm)
+    // Allocate fields array (6 PM concentrations for HM-3301)
+    // Change to 12 and uncomment particle fields below for HM-3302/HM-3602
     static mcp_sensor_field_t fields[6];
 
     xSemaphoreTake(hm3301_cache.mutex, portMAX_DELAY);
 
-    fields[0].name = "pm1_0_std";
+    fields[0].name = "pm1.0_std";
     fields[0].value = (float)hm3301_cache.data.pm1_0_std;
     fields[0].unit = "ug/m3";
     fields[0].quality = 100;
 
-    fields[1].name = "pm2_5_std";
+    fields[1].name = "pm2.5_std";
     fields[1].value = (float)hm3301_cache.data.pm2_5_std;
     fields[1].unit = "ug/m3";
     fields[1].quality = 100;
@@ -707,12 +721,12 @@ static esp_err_t hm3301_sensor_read_multi(const char *sensor_id, mcp_sensor_mult
     fields[2].unit = "ug/m3";
     fields[2].quality = 100;
 
-    fields[3].name = "pm1_0_atm";
+    fields[3].name = "pm1.0_atm";
     fields[3].value = (float)hm3301_cache.data.pm1_0_atm;
     fields[3].unit = "ug/m3";
     fields[3].quality = 100;
 
-    fields[4].name = "pm2_5_atm";
+    fields[4].name = "pm2.5_atm";
     fields[4].value = (float)hm3301_cache.data.pm2_5_atm;
     fields[4].unit = "ug/m3";
     fields[4].quality = 100;
@@ -721,6 +735,37 @@ static esp_err_t hm3301_sensor_read_multi(const char *sensor_id, mcp_sensor_mult
     fields[5].value = (float)hm3301_cache.data.pm10_atm;
     fields[5].unit = "ug/m3";
     fields[5].quality = 100;
+
+    // Uncomment for HM-3302/HM-3602 (counting + weighing mode):
+    // fields[6].name = "particles_0.3um";
+    // fields[6].value = (float)hm3301_cache.data.particles_03um;
+    // fields[6].unit = "count/0.1L";
+    // fields[6].quality = 100;
+
+    // fields[7].name = "particles_0.5um";
+    // fields[7].value = (float)hm3301_cache.data.particles_05um;
+    // fields[7].unit = "count/0.1L";
+    // fields[7].quality = 100;
+
+    // fields[8].name = "particles_1.0um";
+    // fields[8].value = (float)hm3301_cache.data.particles_10um;
+    // fields[8].unit = "count/0.1L";
+    // fields[8].quality = 100;
+
+    // fields[9].name = "particles_2.5um";
+    // fields[9].value = (float)hm3301_cache.data.particles_25um;
+    // fields[9].unit = "count/0.1L";
+    // fields[9].quality = 100;
+
+    // fields[10].name = "particles_5.0um";
+    // fields[10].value = (float)hm3301_cache.data.particles_50um;
+    // fields[10].unit = "count/0.1L";
+    // fields[10].quality = 100;
+
+    // fields[11].name = "particles_10um";
+    // fields[11].value = (float)hm3301_cache.data.particles_100um;
+    // fields[11].unit = "count/0.1L";
+    // fields[11].quality = 100;
 
     xSemaphoreGive(hm3301_cache.mutex);
 

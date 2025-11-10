@@ -50,6 +50,10 @@ extern "C" {
 
 /**
  * @brief Particulate matter measurement data
+ *
+ * NOTE: Particle count fields are only supported on HM-3302 and HM-3602 models.
+ * HM-3301 and HM-3601 only provide PM concentration data (weighing mode).
+ * Particle count fields will read as zero on HM-3301/HM-3601.
  */
 typedef struct {
     uint16_t pm1_0_std;      /**< PM1.0 concentration (CF=1, Standard), ug/m3 */
@@ -58,6 +62,12 @@ typedef struct {
     uint16_t pm1_0_atm;      /**< PM1.0 concentration (Atmospheric environment), ug/m3 */
     uint16_t pm2_5_atm;      /**< PM2.5 concentration (Atmospheric environment), ug/m3 */
     uint16_t pm10_atm;       /**< PM10 concentration (Atmospheric environment), ug/m3 */
+    uint16_t particles_03um; /**< Number of particles >= 0.3um in 0.1L of air (HM-3302/3602 only) */
+    uint16_t particles_05um; /**< Number of particles >= 0.5um in 0.1L of air (HM-3302/3602 only) */
+    uint16_t particles_10um; /**< Number of particles >= 1.0um in 0.1L of air (HM-3302/3602 only) */
+    uint16_t particles_25um; /**< Number of particles >= 2.5um in 0.1L of air (HM-3302/3602 only) */
+    uint16_t particles_50um; /**< Number of particles >= 5.0um in 0.1L of air (HM-3302/3602 only) */
+    uint16_t particles_100um;/**< Number of particles >= 10um in 0.1L of air (HM-3302/3602 only) */
 } hm3301_data_t;
 
 /**
